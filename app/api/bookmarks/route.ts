@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs'
-import clientPromise from '@/lib/mongodb'
+import getClientPromise from '@/lib/mongodb'
 
 export async function GET() {
   try {
@@ -9,7 +9,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const client = await clientPromise
+    const client = await getClientPromise()
     const db = client.db('travelai')
     const bookmarks = await db.collection('bookmarks')
       .find({ userId })
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     }
 
     const data = await req.json()
-    const client = await clientPromise
+    const client = await getClientPromise()
     const db = client.db('travelai')
     
     const bookmark = {

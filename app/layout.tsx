@@ -1,12 +1,26 @@
-import { Inter } from 'next/font/google'
+import { Inter, Outfit } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Navigation } from '@/components/navigation'
 import { Footer } from '@/components/footer'
 import { Toaster } from '@/components/ui/toaster'
+import { CursorGlow } from '@/components/cursor-glow'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ 
+  subsets: ['latin'],
+  variable: '--font-inter'
+})
+
+const outfit = Outfit({ 
+  subsets: ['latin'],
+  variable: '--font-outfit'
+})
+
+export const metadata = {
+  title: 'Travellopedia - AI Travel Planner',
+  description: 'Discover your perfect adventure with AI-powered travel recommendations, personalized itineraries, and real-time insights.',
+}
 
 export default function RootLayout({
   children,
@@ -15,15 +29,16 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className={inter.className}>
+      <html lang="en" suppressHydrationWarning>
+        <body className={`${inter.variable} ${outfit.variable} font-sans`}>
           <ThemeProvider
             attribute="class"
-            defaultTheme="system"
+            defaultTheme="dark"
             enableSystem
             disableTransitionOnChange
           >
-            <div className="flex flex-col min-h-screen">
+            <CursorGlow />
+            <div className="flex flex-col min-h-screen relative">
               <Navigation />
               <main className="flex-grow">{children}</main>
               <Footer />

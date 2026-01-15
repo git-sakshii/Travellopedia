@@ -1,31 +1,18 @@
 // app/api/explore/route.ts
 import { NextResponse } from 'next/server'
-import { openAIClient } from '@/lib/azure-openai'
+import { getGeminiModel } from '@/lib/gemini'
 import { auth } from '@clerk/nextjs'
 import { headers } from 'next/headers'
-import { ratelimit } from '@/lib/upstash'
-
-// Define our own type for rate limit response
-type RateLimitInfo = {
-  success: boolean
-  limit: number
-  remaining: number
-  reset: number
-  pending: Promise<unknown>
-}
+import { checkRateLimit } from '@/lib/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   const startTime = performance.now()
-  const TIME_LIMIT = 11000
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), TIME_LIMIT)
 
-  // Define rateLimitInfo at the top level of the function
-  let rateLimitInfo: RateLimitInfo | null = null
   // Define isGuestMode at the top level to be accessible in catch block
   let isGuestMode = false
+  let rateLimitInfo: { success: boolean; limit: number; remaining: number; reset: number } | null = null
 
   try {
     // Check authentication and guest mode
@@ -41,9 +28,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Apply rate limiting for guest users
+    // Apply rate limiting for guest users using MongoDB
     if (isGuestMode) {
-      rateLimitInfo = await ratelimit.limit(ip) as RateLimitInfo
+      rateLimitInfo = await checkRateLimit(ip)
 
       if (!rateLimitInfo.success) {
         return NextResponse.json({
@@ -64,55 +51,33 @@ export async function POST(req: Request) {
 
     const { query, experience, dateRange } = await req.json()
 
-    if (!process.env.AZURE_OPENAI_DEPLOYMENT_NAME) {
-      throw new Error('Missing Azure OpenAI Deployment Name')
-    }
+    const prompt = `You are a travel expert. Provide detailed information about the destination "${query}" for someone interested in "${experience}" traveling from ${dateRange.from} to ${dateRange.to}.
 
-    const openAIRequest = openAIClient.getChatCompletions(
-      process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
-      [
-        {
-          role: 'system',
-          content: `You are a travel expert. Provide detailed information about travel destinations in JSON format with the following keys:
-            - attractions: Array of top attractions and activities, each on a new line, less than 6
-            - best_time: Best times to visit based on weather and events
-            - transportation: Array of transportation options,max 3
-            - accommodation: Array of accommodation suggestions with price ranges in INR
-            - weather: Local weather conditions and seasonal patterns,in brief
-            - estimated_budget: Estimated daily budget in INR for a typical tourist
-            - personalized_suggestions: Array of suggestions based on user's experience preferences,max 3
+Return ONLY valid JSON (no markdown, no code blocks) with these exact keys:
+{
+  "attractions": ["attraction 1", "attraction 2", ...],
+  "best_time": "description of best times to visit",
+  "transportation": ["option 1", "option 2", "option 3"],
+  "accommodation": [{"name": "Hotel/Type", "price_range": "₹X,XXX - ₹X,XXX per night"}],
+  "weather": "brief weather description",
+  "estimated_budget": "₹X,XXX - ₹X,XXX per day",
+  "personalized_suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"]
+}
 
-            Format numbers with commas for better readability (e.g., 1,500 INR).
-            Keep each section concise but informative.`,
-        },
-        {
-          role: 'user',
-          content: `Destination: ${query}\nDesired Experience: ${experience}\nTravel Dates: ${dateRange.from} to ${dateRange.to}`,
-        },
-      ]
-    )
+Keep each section concise but informative. Use INR (₹) for all prices.`
 
-    const result = await Promise.race([
-      openAIRequest,
-      new Promise<Error>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), TIME_LIMIT)
-      ),
-    ])
-
-    clearTimeout(timeoutId)
+    const geminiModel = getGeminiModel()
+    const result = await geminiModel.generateContent(prompt)
+    const response = result.response.text()
 
     const endTime = performance.now()
     console.log(`Time taken: ${(endTime - startTime).toFixed(2)}ms`)
 
-    if (result instanceof Error) {
-      throw result
-    }
-
-    const response = result.choices[0].message?.content
     if (!response) {
-      throw new Error('No response from Azure OpenAI')
+      throw new Error('No response from Gemini')
     }
 
+    // Clean up any potential markdown formatting
     const cleanResponse = response
       .replace(/```json/g, '')
       .replace(/```/g, '')
@@ -148,7 +113,7 @@ export async function POST(req: Request) {
     }
 
     if (error instanceof Error) {
-      if (error.message === 'Timeout' || error.message.includes('network')) {
+      if (error.message.includes('network') || error.message.includes('timeout')) {
         return errorResponse('Slow Internet Connection. Please try again later.', 504)
       }
 
