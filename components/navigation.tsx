@@ -4,10 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plane, Menu, X } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 import { AuthButton } from '@/components/auth/auth-button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
-import { useUser } from '@clerk/nextjs'
 
 const navLinks = [
   { href: '/explore', label: 'Explore' },
@@ -41,7 +41,8 @@ const mobileMenuVariants = {
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
-  const { isSignedIn } = useUser()
+  const { data: session } = useSession()
+  const isSignedIn = !!session
 
   const closeMenu = () => setIsOpen(false)
 
@@ -81,7 +82,7 @@ export function Navigation() {
                     className="relative px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
                   >
                     {link.label}
-                    <span className="absolute inset-x-2 -bottom-px h-0.5 bg-gradient-to-r from-primary via-secondary to-accent scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+                    <span className="absolute inset-x-2 -bottom-px h-0.5 bg-primary scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
                   </Link>
                 </motion.div>
               ))}

@@ -1,9 +1,10 @@
 // app/api/explore/route.ts
 import { NextResponse } from 'next/server'
 import { getGeminiModel } from '@/lib/gemini'
-import { auth } from '@clerk/nextjs'
+import { getServerSession } from 'next-auth'
 import { headers } from 'next/headers'
 import { checkRateLimit } from '@/lib/rate-limiter'
+import { getAuthOptions } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
 
   try {
     // Check authentication and guest mode
-    const { userId } = auth()
+    const session = await getServerSession(getAuthOptions())
     const headersList = headers()
     const referer = headersList.get('referer') || ''
     isGuestMode = referer.includes('mode=guest')
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     // Get IP for rate limiting
     const ip = headersList.get('x-forwarded-for') || 'anonymous'
 
-    if (!userId && !isGuestMode) {
+    if (!session?.user && !isGuestMode) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

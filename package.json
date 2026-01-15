@@ -10,7 +10,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@clerk/nextjs": "^4.29.9",
+    "@auth/mongodb-adapter": "^3.0.0",
     "@google/generative-ai": "^0.21.0",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-accordion": "^1.1.2",
@@ -40,7 +40,9 @@
     "@radix-ui/react-toggle": "^1.0.3",
     "@radix-ui/react-toggle-group": "^1.0.4",
     "@radix-ui/react-tooltip": "^1.0.7",
+    "@types/bcryptjs": "^2.4.6",
     "axios": "^1.7.9",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.4",
@@ -51,6 +53,7 @@
     "lucide-react": "^0.446.0",
     "mongodb": "^6.5.0",
     "next": "13.5.1",
+    "next-auth": "^4.24.5",
     "next-themes": "^0.3.0",
     "react": "18.2.0",
     "react-day-picker": "^9.5.0",

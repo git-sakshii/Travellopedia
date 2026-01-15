@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { Card } from '@/components/ui/card'
-import { useUser } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
 import { format } from 'date-fns'
 import { DetailDialog } from '../explore/components/detail-dialog'
 
@@ -27,19 +27,19 @@ interface TripHistory {
 export default function HistoryPage() {
   const [trips, setTrips] = useState<TripHistory[]>([])
   const [selectedTrip, setSelectedTrip] = useState<TripHistory | null>(null)
-  const { isSignedIn, user } = useUser()
+  const { data: session } = useSession()
+  const isSignedIn = !!session
 
   useEffect(() => {
     // Fetch trip history from API
-    // This is a placeholder - implement actual API call
     const fetchTrips = async () => {
-      if (isSignedIn && user) {
+      if (isSignedIn) {
         // Fetch trips for the user
       }
     }
 
     fetchTrips()
-  }, [isSignedIn, user])
+  }, [isSignedIn])
 
   return (
     <div className="min-h-screen bg-background">

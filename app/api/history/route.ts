@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs'
+import { getServerSession } from 'next-auth'
 import getClientPromise from '@/lib/mongodb'
+import { getAuthOptions } from '@/lib/auth'
 
 export async function GET() {
   try {
-    const { userId } = auth()
-    if (!userId) {
+    const session = await getServerSession(getAuthOptions())
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const client = await getClientPromise()
     const db = client.db('travelai')
     const history = await db.collection('history')
-      .find({ userId })
+      .find({ userId: session.user.id })
       .sort({ createdAt: -1 })
       .toArray()
 

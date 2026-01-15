@@ -5,14 +5,13 @@ import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LucideIcon, MapPin, Calendar, Plane, Hotel, Cloud, DollarSign, Lightbulb, Bookmark, Search, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { useUser } from '@clerk/nextjs'
+import { useSession, signIn } from 'next-auth/react'
 import { SearchForm } from './components/search-form'
 import { DateRangePicker } from './components/date-range-picker'
 import { ExperienceInput } from './components/experience-input'
 import { Suggestions } from './components/suggestions'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { SignUpButton } from '@clerk/nextjs'
 import { FloatingOrbs } from '@/components/floating-orbs'
 
 // ResultCard Types and Component
@@ -139,7 +138,8 @@ export default function ExplorePage() {
   })
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
-  const { isSignedIn } = useUser()
+  const { data: session } = useSession()
+  const isSignedIn = !!session
   const searchParams = useSearchParams()
   const isGuestMode = searchParams.get('mode') === 'guest'
   const [rateLimitReached, setRateLimitReached] = useState(false)
@@ -289,9 +289,9 @@ export default function ExplorePage() {
                   </div>
                   <h2 className="text-xl font-semibold mb-2">Guest Query Limit Reached</h2>
                   <p className="text-muted-foreground mb-6">Sign up to continue exploring and get unlimited access!</p>
-                  <SignUpButton mode="modal">
-                    <Button size="lg" className="glow-button">Sign Up Now</Button>
-                  </SignUpButton>
+                  <Button size="lg" className="glow-button" onClick={() => signIn()}>
+                    Sign Up Now
+                  </Button>
                 </Card>
               </motion.div>
             )}

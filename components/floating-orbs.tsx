@@ -7,39 +7,31 @@ interface FloatingOrbsProps {
 }
 
 export function FloatingOrbs({ count = 3 }: FloatingOrbsProps) {
-  const orbs = Array.from({ length: count }, (_, i) => ({
-    id: i,
-    size: Math.random() * 300 + 200,
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    duration: Math.random() * 10 + 15,
-    delay: Math.random() * 5,
-    color: i % 3 === 0 
-      ? 'bg-purple-500/20' 
-      : i % 3 === 1 
-        ? 'bg-cyan-500/20' 
-        : 'bg-pink-500/20'
-  }))
+  const orbs = [
+    { size: 400, x: '10%', y: '20%', delay: 0 },
+    { size: 300, x: '70%', y: '60%', delay: 2 },
+    { size: 350, x: '80%', y: '10%', delay: 4 },
+  ].slice(0, count)
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {orbs.map((orb) => (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+      {orbs.map((orb, i) => (
         <motion.div
-          key={orb.id}
-          className={`absolute rounded-full blur-3xl ${orb.color}`}
+          key={i}
+          className="absolute rounded-full opacity-20"
           style={{
             width: orb.size,
             height: orb.size,
-            left: `${orb.x}%`,
-            top: `${orb.y}%`,
+            left: orb.x,
+            top: orb.y,
+            background: 'radial-gradient(circle, hsl(160 84% 45% / 0.15) 0%, transparent 70%)',
           }}
           animate={{
-            x: [0, 100, -50, 0],
-            y: [0, -80, 50, 0],
-            scale: [1, 1.2, 0.9, 1],
+            y: [0, -30, 0],
+            scale: [1, 1.05, 1],
           }}
           transition={{
-            duration: orb.duration,
+            duration: 8,
             delay: orb.delay,
             repeat: Infinity,
             ease: 'easeInOut',

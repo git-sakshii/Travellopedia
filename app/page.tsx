@@ -94,7 +94,7 @@ export default function Home() {
           <Link href="/explore">
             <Button 
               size="lg" 
-              className="text-lg glow-button bg-gradient-to-r from-purple-600 via-cyan-600 to-pink-600 hover:from-purple-500 hover:via-cyan-500 hover:to-pink-500 border-0"
+              className="text-lg glow-button"
             >
               Start Planning
               <ArrowRight className="ml-2 h-5 w-5" />
