@@ -10,7 +10,9 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 
 const navLinks = [
+  { href: '/dashboard', label: 'Dashboard' },
   { href: '/explore', label: 'Explore' },
+  { href: '/trips', label: 'My Trips' },
   { href: '/bookmarks', label: 'Bookmarks' },
   { href: '/todos', label: 'Todo List' },
   { href: '/history', label: 'History' },

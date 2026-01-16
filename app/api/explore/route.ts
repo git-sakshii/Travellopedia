@@ -1,19 +1,15 @@
-// app/api/explore/route.ts
 import { NextResponse } from 'next/server'
 import { getGeminiModel } from '@/lib/gemini'
 import { getServerSession } from 'next-auth'
 import { headers } from 'next/headers'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { getAuthOptions } from '@/lib/auth'
+import { repairAndParseJSON } from '@/lib/json-repair'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
-  const startTime = performance.now()
-
-  // Define isGuestMode at the top level to be accessible in catch block
   let isGuestMode = false
-  let rateLimitInfo: { success: boolean; limit: number; remaining: number; reset: number } | null = null
 
   try {
     // Check authentication and guest mode
@@ -21,111 +17,147 @@ export async function POST(req: Request) {
     const headersList = headers()
     const referer = headersList.get('referer') || ''
     isGuestMode = referer.includes('mode=guest')
-    
-    // Get IP for rate limiting
-    const ip = headersList.get('x-forwarded-for') || 'anonymous'
 
-    if (!session?.user && !isGuestMode) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!session && !isGuestMode) {
+      return NextResponse.json(
+        { error: 'Please sign in or use guest mode to explore destinations' },
+        { status: 401 }
+      )
     }
 
-    // Apply rate limiting for guest users using MongoDB
-    if (isGuestMode) {
-      rateLimitInfo = await checkRateLimit(ip)
-
-      if (!rateLimitInfo.success) {
-        return NextResponse.json({
-          error: 'Rate limit exceeded',
-          limit: rateLimitInfo.limit,
-          reset: rateLimitInfo.reset,
-          remaining: rateLimitInfo.remaining
-        }, { 
-          status: 429,
-          headers: {
-            'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
-            'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
-            'X-RateLimit-Reset': rateLimitInfo.reset.toString()
-          }
-        })
+    // Rate limiting for guest users
+    if (isGuestMode && !session) {
+      const ip = headersList.get('x-forwarded-for')?.split(',')[0] || 
+                 headersList.get('x-real-ip') || 
+                 'unknown'
+      
+      const rateLimit = await checkRateLimit(ip)
+      
+      if (!rateLimit.success) {
+        return NextResponse.json(
+          { 
+            error: 'Guest query limit reached. Sign up for unlimited access!',
+            rateLimitReached: true,
+            reset: rateLimit.reset 
+          },
+          { status: 429 }
+        )
       }
     }
 
-    const { query, experience, dateRange } = await req.json()
+    const { destination, from, budget, experience, startDate, endDate } = await req.json()
+    
+    if (!destination) {
+      return NextResponse.json(
+        { error: 'Destination is required' },
+        { status: 400 }
+      )
+    }
 
-    const prompt = `You are a travel expert. Provide detailed information about the destination "${query}" for someone interested in "${experience}" traveling from ${dateRange.from} to ${dateRange.to}.
+    const prompt = `You are a travel assistant. Return ONLY a JSON object for ${destination} trip from ${from || 'India'}.
+Budget: ${budget ? '₹' + budget : 'any'}. ${experience || ''}
 
-Return ONLY valid JSON (no markdown, no code blocks) with these exact keys:
+JSON format (no extra text):
 {
-  "attractions": ["attraction 1", "attraction 2", ...],
-  "best_time": "description of best times to visit",
-  "transportation": ["option 1", "option 2", "option 3"],
-  "accommodation": [{"name": "Hotel/Type", "price_range": "₹X,XXX - ₹X,XXX per night"}],
-  "weather": "brief weather description",
-  "estimated_budget": "₹X,XXX - ₹X,XXX per day",
-  "personalized_suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"]
+  "destination_overview": "2 sentences about ${destination}",
+  "how_to_reach": {
+    "by_flight": {"description": "flights from ${from || 'major cities'}", "cost": "₹X-Y", "duration": "X hrs"},
+    "by_train": {"description": "train options", "cost": "₹X-Y", "duration": "X hrs"},
+    "by_road": {"description": "road/bus", "cost": "₹X-Y", "duration": "X hrs"}
+  },
+  "attractions": [
+    {"name": "Place 1", "description": "about it", "entry_fee": "₹X", "time_needed": "X hrs"}
+  ],
+  "best_time": "best months",
+  "weather_info": "current weather",
+  "accommodation": [
+    {"type": "Budget", "options": "hotel names", "price_range": "₹X-Y/night"}
+  ],
+  "food_guide": [
+    {"type": "Local", "dishes": ["dish1", "dish2"], "avg_cost": "₹X/meal"}
+  ],
+  "cost_breakdown": {
+    "transport": {"min": 1000, "max": 5000},
+    "accommodation": {"min": 1000, "max": 5000},
+    "food": {"min": 500, "max": 1500},
+    "activities": {"min": 500, "max": 2000},
+    "total_estimated": {"min": 5000, "max": 20000}
+  },
+  "itinerary_suggestions": [
+    {"day": 1, "activities": ["Morning", "Afternoon", "Evening"]}
+  ],
+  "travel_tips": ["tip1", "tip2", "tip3"],
+  "safety_info": "safety notes",
+  "best_for": ["Families", "Couples"]
 }
 
-Keep each section concise but informative. Use INR (₹) for all prices.`
+Fill with real data for ${destination}. Include 5 attractions, 3 accommodation types, 3-day itinerary.`
 
     const geminiModel = getGeminiModel()
-    const result = await geminiModel.generateContent(prompt)
-    const response = result.response.text()
-
-    const endTime = performance.now()
-    console.log(`Time taken: ${(endTime - startTime).toFixed(2)}ms`)
-
-    if (!response) {
-      throw new Error('No response from Gemini')
+    
+    let travelInfo = null
+    
+    try {
+      const result = await geminiModel.generateContent(prompt)
+      const response = result.response.text()
+      
+      // Use robust JSON repair
+      travelInfo = repairAndParseJSON(response)
+      
+      // If repair failed, throw to use fallback
+      if (!travelInfo) {
+        throw new Error('JSON repair returned null')
+      }
+    } catch (parseError) {
+      console.error('JSON parse failed:', parseError)
+      // Return fallback
+      travelInfo = {
+        destination_overview: `${destination} is a popular travel destination with diverse attractions and experiences.`,
+        how_to_reach: {
+          by_flight: { description: `Flights from ${from || 'major cities'}`, cost: "₹3,000 - ₹15,000", duration: "2-4 hours" },
+          by_train: { description: "Train services available", cost: "₹500 - ₹3,000", duration: "8-12 hours" },
+          by_road: { description: "Well connected by roads", cost: "₹1,000 - ₹5,000", duration: "Varies" }
+        },
+        attractions: [
+          { name: "Local Landmarks", description: "Famous spots to visit", entry_fee: "₹50-500", time_needed: "2-3 hours" },
+          { name: "Cultural Sites", description: "Experience local culture", entry_fee: "₹100-300", time_needed: "1-2 hours" },
+          { name: "Nature Spots", description: "Natural beauty", entry_fee: "Free-₹200", time_needed: "2-4 hours" }
+        ],
+        best_time: "October to March for pleasant weather",
+        weather_info: "Check current forecast before travel",
+        accommodation: [
+          { type: "Budget", options: "Hostels, Guesthouses", price_range: "₹500-1500/night" },
+          { type: "Mid-range", options: "3-star hotels", price_range: "₹2000-4000/night" },
+          { type: "Luxury", options: "5-star hotels", price_range: "₹5000+/night" }
+        ],
+        food_guide: [
+          { type: "Street Food", dishes: ["Local snacks"], avg_cost: "₹50-150/meal" },
+          { type: "Restaurant", dishes: ["Main dishes"], avg_cost: "₹200-500/meal" }
+        ],
+        cost_breakdown: {
+          transport: { min: 3000, max: 15000 },
+          accommodation: { min: 2000, max: 10000 },
+          food: { min: 1500, max: 5000 },
+          activities: { min: 1000, max: 3000 },
+          total_estimated: { min: 10000, max: 40000 }
+        },
+        itinerary_suggestions: [
+          { day: 1, activities: ["Arrive and check-in", "Explore local area", "Dinner at local restaurant"] },
+          { day: 2, activities: ["Visit main attractions", "Lunch break", "Evening cultural activities"] },
+          { day: 3, activities: ["Morning sightseeing", "Shopping", "Departure"] }
+        ],
+        travel_tips: ["Carry valid ID", "Book accommodation in advance", "Try local cuisine", "Stay hydrated"],
+        safety_info: "Keep valuables safe, follow local guidelines",
+        best_for: ["Families", "Couples", "Solo travelers", "Friends"]
+      }
     }
 
-    // Clean up any potential markdown formatting
-    const cleanResponse = response
-      .replace(/```json/g, '')
-      .replace(/```/g, '')
-      .trim()
-
-    // Create response with cleaned data
-    const jsonResponse = NextResponse.json(JSON.parse(cleanResponse))
-
-    // Add rate limit headers to successful response if in guest mode
-    if (isGuestMode && rateLimitInfo) {
-      jsonResponse.headers.set('X-RateLimit-Limit', rateLimitInfo.limit.toString())
-      jsonResponse.headers.set('X-RateLimit-Remaining', rateLimitInfo.remaining.toString())
-      jsonResponse.headers.set('X-RateLimit-Reset', rateLimitInfo.reset.toString())
-    }
-
-    return jsonResponse
-
+    return NextResponse.json(travelInfo)
   } catch (error) {
-    console.error('Error:', error)
-
-    // Create error response with appropriate status and message
-    const errorResponse = (message: string, status: number) => {
-      const response = NextResponse.json({ error: message }, { status })
-      
-      // Add rate limit headers to error responses if in guest mode
-      if (isGuestMode && rateLimitInfo) {
-        response.headers.set('X-RateLimit-Limit', rateLimitInfo.limit.toString())
-        response.headers.set('X-RateLimit-Remaining', rateLimitInfo.remaining.toString())
-        response.headers.set('X-RateLimit-Reset', rateLimitInfo.reset.toString())
-      }
-      
-      return response
-    }
-
-    if (error instanceof Error) {
-      if (error.message.includes('network') || error.message.includes('timeout')) {
-        return errorResponse('Slow Internet Connection. Please try again later.', 504)
-      }
-
-      // Handle JSON parsing errors
-      if (error instanceof SyntaxError && error.message.includes('JSON')) {
-        return errorResponse('Invalid response format. Please try again.', 500)
-      }
-
-      return errorResponse('Failed to process request. Please try again later.', 500)
-    }
-
-    return errorResponse('Unknown error occurred. Please try again later.', 500)
+    console.error('Error generating travel info:', error)
+    return NextResponse.json(
+      { error: 'Failed to generate travel information' },
+      { status: 500 }
+    )
   }
 }
